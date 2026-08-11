@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LeetCode Complexity Insight</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="popup-root">
+    <!-- Header -->
+    <header class="popup-header">
+      <div class="popup-logo">
+        <span class="popup-logo-icon">⚡</span>
+        <div>
+          <div class="popup-logo-title">Complexity Insight</div>
+          <div class="popup-logo-sub">for LeetCode</div>
+        </div>
+      </div>
+      <div class="popup-status" id="popup-status">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="status-text" id="status-text">Checking…</span>
+      </div>
+    </header>
+
+    <!-- API Key Section -->
+    <section class="popup-section" id="section-apikey">
+      <div class="popup-section-label">
+        <span class="section-label-text">Gemini API Key</span>
+        <a href="https://aistudio.google.com/app/apikey" target="_blank" class="popup-link" id="get-key-link">Get free key ↗</a>
+      </div>
+      <div class="popup-input-wrap">
+        <input
+          type="password"
+          id="api-key-input"
+          class="popup-input"
+          placeholder="AIza… or AQ…"
+          autocomplete="off"
+          spellcheck="false"
+          aria-label="Gemini API Key"
+        />
+        <button class="popup-input-toggle" id="toggle-key-visibility" title="Show/hide key" aria-label="Toggle key visibility">
+          <svg id="eye-icon" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
+      </div>
+      <div class="popup-key-actions">
+        <button class="popup-btn popup-btn-primary" id="save-key-btn">Save Key</button>
+        <button class="popup-btn popup-btn-ghost" id="clear-key-btn">Clear</button>
+      </div>
+      <div id="key-feedback" class="popup-feedback" aria-live="polite"></div>
+      <div class="popup-section-label" style="margin-top: 10px; margin-bottom: 6px;">
+        <span class="section-label-text">Model</span>
+      </div>
+      <div class="popup-select-wrap">
+        <select id="model-select" class="popup-select" aria-label="Select Gemini Model">
+          <option value="models/gemini-2.0-flash">Gemini 2.0 Flash (Default)</option>
+          <option value="models/gemini-1.5-flash">Gemini 1.5 Flash</option>
+          <option value="models/gemini-1.5-pro">Gemini 1.5 Pro</option>
+        </select>
+      </div>
+      <div class="popup-privacy-note">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <span>Your key is stored locally only. Code is sent to Google's Gemini API for analysis — never stored by this extension.</span>
+      </div>
+    </section>
+
+    <!-- Quick Status / Controls -->
+    <section class="popup-section" id="section-controls">
+      <div class="popup-section-label">
+        <span class="section-label-text">Extension</span>
+      </div>
+      <div class="popup-toggles">
+        <div class="popup-toggle-row">
+          <div>
+            <div class="toggle-label">Enabled</div>
+            <div class="toggle-sub">Auto-analyze submissions</div>
+          </div>
+          <label class="toggle-switch" for="toggle-enabled">
+            <input type="checkbox" id="toggle-enabled" checked aria-label="Enable auto-analysis" />
+            <span class="toggle-slider"></span>
+          </label>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cache / History -->
+    <section class="popup-section" id="section-cache">
+      <div class="popup-section-label">
+        <span class="section-label-text">Cache</span>
+      </div>
+      <div class="popup-cache-info">
+        <div class="popup-cache-stat">
+          <div class="cache-stat-value" id="cache-count">—</div>
+          <div class="cache-stat-label">Analyses cached</div>
+        </div>
+        <button class="popup-btn popup-btn-ghost popup-btn-danger" id="clear-cache-btn">Clear cache</button>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="popup-footer">
+      <span class="popup-version">v1.0.0</span>
+      <a href="https://github.com" target="_blank" class="popup-link popup-link-footer">GitHub ↗</a>
+    </footer>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

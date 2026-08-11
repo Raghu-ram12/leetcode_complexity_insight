@@ -1,0 +1,46 @@
+{
+  "manifest_version": 3,
+  "name": "LeetCode Complexity Insight",
+  "version": "1.0.0",
+  "description": "Analyzes your LeetCode submissions for time/space complexity and suggests better algorithmic approaches — conceptually, never showing code.",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    },
+    "default_title": "LeetCode Complexity Insight"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://leetcode.com/problems/*", "https://www.leetcode.com/problems/*"],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "*://*.leetcode.com/*"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["bridge.js"],
+      "matches": ["https://leetcode.com/*", "https://www.leetcode.com/*"]
+    }
+  ]
+}

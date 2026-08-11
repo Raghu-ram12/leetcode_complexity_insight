@@ -1,0 +1,377 @@
+/*
+ * popup.css — Styles for the extension popup
+ */
+
+/* System font stack — Google Fonts blocked by MV3 extension CSP */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d27;
+  --surface2: #22263a;
+  --surface3: #2a2f47;
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.12);
+  --text: #e8eaf0;
+  --text-muted: #8b92a9;
+  --text-faint: #555d7a;
+  --accent: #FFA116;
+  --accent-dim: rgba(255,161,22,0.12);
+  --blue: #6c8dfa;
+  --blue-dim: rgba(108,141,250,0.12);
+  --green: #3dcc87;
+  --green-dim: rgba(61,204,135,0.10);
+  --red: #ff5c5c;
+  --red-dim: rgba(255,92,92,0.10);
+  --radius: 10px;
+  --radius-sm: 7px;
+}
+
+html, body {
+  width: 320px;
+  min-height: 480px;
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  font-size: 13px;
+}
+
+.popup-root {
+  display: flex;
+  flex-direction: column;
+  min-height: 480px;
+}
+
+/* ─── Header ─────────────────────────────────────────────────────────────────── */
+.popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 12px;
+  background: linear-gradient(135deg, #12151f 0%, #1a1d27 100%);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.popup-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.popup-logo-icon {
+  font-size: 24px;
+  filter: drop-shadow(0 0 8px rgba(255,161,22,0.5));
+}
+
+.popup-logo-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.popup-logo-sub {
+  font-size: 10px;
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+/* Status indicator */
+.popup-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+
+.status-dot.active { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.status-dot.inactive { background: var(--text-faint); }
+
+.status-text {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ─── Sections ───────────────────────────────────────────────────────────────── */
+.popup-section {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.popup-section:last-of-type { border-bottom: none; }
+
+.popup-section-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.section-label-text {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.popup-link {
+  font-size: 11px;
+  color: var(--blue);
+  text-decoration: none;
+  transition: opacity 0.15s;
+}
+.popup-link:hover { opacity: 0.8; text-decoration: underline; }
+
+/* ─── API Key Input ──────────────────────────────────────────────────────────── */
+.popup-input-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--surface2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.popup-input-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+
+.popup-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+  letter-spacing: 0.5px;
+}
+
+.popup-input::placeholder { color: var(--text-faint); letter-spacing: 0; }
+
+.popup-input-toggle {
+  padding: 0 10px;
+  background: transparent;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  height: 38px;
+  transition: color 0.15s;
+}
+.popup-input-toggle:hover { color: var(--text-muted); }
+
+.popup-key-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+/* Buttons */
+.popup-btn {
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s, transform 0.1s;
+  font-family: inherit;
+}
+
+.popup-btn:active { transform: scale(0.97); }
+
+.popup-btn-primary {
+  background: linear-gradient(135deg, #FFA116, #ff7b00);
+  color: #000;
+  flex: 1;
+}
+.popup-btn-primary:hover { opacity: 0.9; }
+
+.popup-btn-ghost {
+  background: var(--surface2);
+  color: var(--text-muted);
+  border: 1px solid var(--border-strong);
+}
+.popup-btn-ghost:hover { background: var(--surface3); color: var(--text); }
+
+.popup-btn-danger { color: var(--red); }
+.popup-btn-danger:hover { background: var(--red-dim); }
+
+/* Feedback */
+.popup-feedback {
+  font-size: 12px;
+  margin-top: 6px;
+  min-height: 18px;
+  color: var(--green);
+  transition: opacity 0.3s;
+}
+
+.popup-feedback.error { color: var(--red); }
+.popup-feedback.fade { opacity: 0; }
+
+/* Privacy note */
+.popup-privacy-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-faint);
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+.popup-privacy-note svg {
+  flex-shrink: 0;
+  margin-top: 1px;
+  color: var(--blue);
+}
+
+/* ─── Toggles ────────────────────────────────────────────────────────────────── */
+.popup-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.toggle-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.toggle-sub {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin-top: 1px;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 36px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+.toggle-switch input { opacity: 0; width: 0; height: 0; }
+
+.toggle-slider {
+  position: absolute;
+  inset: 0;
+  background: var(--surface3);
+  border-radius: 20px;
+  cursor: pointer;
+  transition: background 0.2s;
+  border: 1px solid var(--border-strong);
+}
+
+.toggle-slider::before {
+  content: '';
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  left: 3px;
+  top: 2px;
+  background: var(--text-muted);
+  border-radius: 50%;
+  transition: transform 0.2s, background 0.2s;
+}
+
+.toggle-switch input:checked + .toggle-slider { background: var(--accent); border-color: var(--accent); }
+.toggle-switch input:checked + .toggle-slider::before {
+  transform: translateX(16px);
+  background: #000;
+}
+
+/* ─── Cache Stats ────────────────────────────────────────────────────────────── */
+.popup-cache-info {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.popup-cache-stat { }
+
+.cache-stat-value {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1;
+}
+
+.cache-stat-label {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 2px;
+}
+
+/* ─── Footer ─────────────────────────────────────────────────────────────────── */
+.popup-footer {
+  margin-top: auto;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.popup-version {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.popup-link-footer {
+  font-size: 10px;
+}
+
+/* Model Dropdown */
+.popup-select-wrap {
+  display: flex;
+  align-items: center;
+  background: var(--surface2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.popup-select-wrap:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-dim);
+}
+.popup-select {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: var(--text);
+  font-family: inherit;
+  cursor: pointer;
+}
+.popup-select option {
+  background: var(--surface);
+  color: var(--text);
+}
