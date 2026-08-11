@@ -194,7 +194,11 @@
         // Only fire if user has actually clicked Submit — prevents accidental triggers
         // from stale DOM state on page load or LeetCode's SPA keeping old results visible
         if (!submitPending || isAnalyzing) return;
-        checkDOMForResult();
+        chrome.storage.local.get("lci_auto_analyze", (data) => {
+          if (data.lci_auto_analyze !== false) {
+            checkDOMForResult();
+          }
+        });
       }, 500)
     );
     observer.observe(document.body, { childList: true, subtree: true, characterData: false });
@@ -206,18 +210,21 @@
     window.addEventListener('__lci_submit_clicked', () => {
       // Clear any previous interval
       if (pollingInterval) clearInterval(pollingInterval);
-      let attempts = 0;
-      console.log('[LCI] Polling fallback activated');
-      pollingInterval = setInterval(() => {
-        attempts++;
-        if (attempts > 30) {  // Timeout after 60s
-          clearInterval(pollingInterval);
-          pollingInterval = null;
-          submitPending = false;
-          return;
-        }
-        if (!isAnalyzing) checkDOMForResult();
-      }, 2000);
+      chrome.storage.local.get("lci_auto_analyze", (data) => {
+        if (data.lci_auto_analyze === false) return;
+        let attempts = 0;
+        console.log('[LCI] Polling fallback activated');
+        pollingInterval = setInterval(() => {
+          attempts++;
+          if (attempts > 30) {  // Timeout after 60s
+            clearInterval(pollingInterval);
+            pollingInterval = null;
+            submitPending = false;
+            return;
+          }
+          if (!isAnalyzing) checkDOMForResult();
+        }, 2000);
+      });
     });
   }
 
@@ -243,7 +250,7 @@
           if (hasResult && !isAnalyzing) {
             isAnalyzing = false;
             _lastAnalysisKey = ''; // reset dedup so FAB-triggered scan works
-            checkDOMForResult();
+            checkDOMForResult(true); // Force manual run
           } else {
             // Just open the overlay to show last analysis or empty state
             showOverlay();
@@ -258,9 +265,9 @@
   // This prevents re-triggering on the same result page (unlike time-based dedup)
   let _lastAnalysisKey = '';
 
-  function checkDOMForResult() {
-    // Guard: only run if user has clicked Submit — prevents firing on stale page state
-    if (!submitPending) return;
+  function checkDOMForResult(force = false) {
+    // Guard: only run if user has clicked Submit (or forced via FAB/buttons click) — prevents firing on stale page state
+    if (!submitPending && !force) return;
 
     // Only use the stable data-e2e-locator element — do NOT scan body.innerText
     // (body text contains 'Accepted' in sidebar/tabs/stats even before submission)
@@ -269,9 +276,19 @@
 
     if (!verdict || verdict === 'Checking...' || verdict === '') return;
 
+    if (verdict.toLowerCase() !== 'accepted') {
+      submitPending = false;  // consume the gate
+      stopPolling();          // stop polling
+      if (force) {
+        showOverlay();
+        sendToOverlay({ type: "ERROR", error: "Only successful (Accepted) submissions can be analyzed." });
+      }
+      return;
+    }
+
     // Dedupe by problem+verdict — resets only on new submit click
     const key = `${currentProblemMeta.problemTitle}::${verdict}`;
-    if (key === _lastAnalysisKey) return;
+    if (!force && key === _lastAnalysisKey) return;
     _lastAnalysisKey = key;
 
     submitPending = false;  // consume the gate — done waiting for this submission's result
@@ -291,13 +308,25 @@
     // from GraphQL polls LeetCode fires for other reasons (e.g. viewing past submissions)
     if (!submitPending) return;
 
+    // Only proceed for Accepted submissions
+    if (data.status_msg.toLowerCase() !== 'accepted') {
+      submitPending = false;
+      return;
+    }
+
     // Dedupe by submission ID if available
     const subId = data.submission_id || data.id || `${data.status_msg}-${Math.floor(Date.now() / 3000)}`;
     if (subId === lastSubmissionId) return;
     lastSubmissionId = subId;
 
     submitPending = false;  // consume the gate
-    await triggerAnalysis(data);
+    chrome.storage.local.get("lci_auto_analyze", (dataStorage) => {
+      if (dataStorage.lci_auto_analyze !== false) {
+        triggerAnalysis(data);
+      } else {
+        console.log('[LCI] Auto-analyze is disabled. Click the FAB button to analyze.');
+      }
+    });
   }
 
   // ─── Analysis Trigger ──────────────────────────────────────────────────────
@@ -602,8 +631,8 @@
               <div class="lci-settings-toggle-label">Auto-analyze</div>
               <div class="lci-settings-toggle-sub">Analyze on each submission</div>
             </div>
-            <label class="lci-toggle-switch" for="lci-toggle-enabled">
-              <input type="checkbox" id="lci-toggle-enabled" checked />
+            <label class="lci-toggle-switch" for="lci-toggle-auto-analyze">
+              <input type="checkbox" id="lci-toggle-auto-analyze" checked />
               <span class="lci-toggle-slider"></span>
             </label>
           </div>
@@ -797,7 +826,7 @@
         isAnalyzing = false;
         lastSubmissionId = null;
         _lastAnalysisKey = ''; // reset dedup so retry re-triggers analysis
-        checkDOMForResult();
+        checkDOMForResult(true);
       });
 
       // Re-analyze
@@ -805,18 +834,18 @@
         isAnalyzing = false;
         lastSubmissionId = null;
         _lastAnalysisKey = ''; // reset dedup so re-analyze re-triggers analysis
-        checkDOMForResult();
+        checkDOMForResult(true);
       });
 
       // Settings button
       document.querySelector("#lci-settings-btn")?.addEventListener("click", () => {
         showSection("lci-settings");
         // Load current key into the input
-        chrome.storage.local.get(["geminiApiKey", "lci_enabled", "geminiModel"], (data) => {
+        chrome.storage.local.get(["geminiApiKey", "lci_auto_analyze", "geminiModel"], (data) => {
           const inp = document.querySelector("#lci-api-key-input");
           if (inp) inp.value = data.geminiApiKey || "";
-          const tog = document.querySelector("#lci-toggle-enabled");
-          if (tog) tog.checked = data.lci_enabled !== false;
+          const tog = document.querySelector("#lci-toggle-auto-analyze");
+          if (tog) tog.checked = data.lci_auto_analyze !== false;
           fetchAndPopulateOverlayModels(data.geminiApiKey, data.geminiModel);
         });
       });
@@ -826,11 +855,11 @@
       // Open settings from the setup screen
       document.querySelector("#lci-open-settings-btn")?.addEventListener("click", () => {
         showSection("lci-settings");
-        chrome.storage.local.get(["geminiApiKey", "lci_enabled", "geminiModel"], (data) => {
+        chrome.storage.local.get(["geminiApiKey", "lci_auto_analyze", "geminiModel"], (data) => {
           const inp = document.querySelector("#lci-api-key-input");
           if (inp) inp.value = data.geminiApiKey || "";
-          const tog = document.querySelector("#lci-toggle-enabled");
-          if (tog) tog.checked = data.lci_enabled !== false;
+          const tog = document.querySelector("#lci-toggle-auto-analyze");
+          if (tog) tog.checked = data.lci_auto_analyze !== false;
           fetchAndPopulateOverlayModels(data.geminiApiKey, data.geminiModel);
         });
       });
@@ -893,9 +922,9 @@
       });
 
       // Auto-analyze toggle inside overlay
-      document.querySelector("#lci-toggle-enabled")?.addEventListener("change", (e) => {
-        chrome.storage.local.set({ lci_enabled: e.target.checked });
-        showSettingsFeedback(e.target.checked ? "Enabled." : "Disabled — reload tab to apply.", "success");
+      document.querySelector("#lci-toggle-auto-analyze")?.addEventListener("change", (e) => {
+        chrome.storage.local.set({ lci_auto_analyze: e.target.checked });
+        showSettingsFeedback(e.target.checked ? "Auto-analyze enabled." : "Auto-analyze disabled.", "success");
       });
 
       // Drag
