@@ -25,7 +25,18 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.type === "CLEAR_CACHE") {
-    chrome.storage.local.clear(() => sendResponse({ success: true }));
+    chrome.storage.local.get(null, (allData) => {
+      const keysToRemove = Object.keys(allData).filter(
+        (k) => k.startsWith(CACHE_VERSION + "_") || k === "lci_history"
+      );
+      if (keysToRemove.length === 0) {
+        sendResponse({ success: true, removed: 0 });
+        return;
+      }
+      chrome.storage.local.remove(keysToRemove, () => {
+        sendResponse({ success: true, removed: keysToRemove.length });
+      });
+    });
     return true;
   }
 });
@@ -257,15 +268,56 @@ function sanitizeAnalysis(analysis) {
   // Deep-clone and sanitize all string fields
   const clone = JSON.parse(JSON.stringify(analysis));
 
+  // Best-effort, defense-in-depth layer. This is NOT a substitute for the
+  // system prompt instructions — it is a last-resort safety net. Language-
+  // specific patterns should be revisited if new bypass patterns are found
+  // in the wild (e.g. new languages, obfuscated constructs, etc.).
   function sanitizeString(str) {
     if (typeof str !== "string") return str;
-    // Strip code blocks
+
+    // Pass 1: Strip fenced code blocks and inline backtick code
     str = str.replace(/```[\s\S]*?```/g, "[code removed]");
     str = str.replace(/`[^`]*`/g, "[code removed]");
-    // Strip lines that look like code: must have assignment/arrow-fn/block chars together
+
+    // Pass 2: Strip lines that look like JS/C-style code:
+    // must have assignment/arrow-fn/block chars together.
     // Avoids stripping valid reasoning like "runs O(n); inner loop adds O(n)" (lone semicolon)
     str = str.replace(/^.*(?:(?:=|=>|:=)[^\n]*[{};]|[{};][^\n]*(?:=|=>)).*$/gm, "[code removed]");
     str = str.replace(/^\s*(?:function|class|const|let|var|return|if|for|while)\b.*$/gm, "[code removed]");
+
+    // Pass 3: Python-aware patterns (additive — run after the JS/C passes above).
+
+    // 3a. Lines that look like Python block openers (end in a colon after a
+    //     known keyword), e.g. "for i in range(n):", "def solve(nums):"
+    str = str.replace(
+      /^\s*(?:def|class|for|while|if|elif|else|try|except|finally|with)\b.*:\s*$/gm,
+      "[code removed]"
+    );
+
+    // 3b. Lines that look like Python/generic assignment/compound-assignment
+    //     without needing braces or semicolons, e.g. "dp[i] = dp[i-1] + 1",
+    //     "arr.append(x)". Heuristic: skip if the line reads like prose
+    //     (4+ consecutive plain-English words) to avoid false-positives on
+    //     reasoning such as "space = O(n) because the hash map grows linearly".
+    str = str.replace(
+      /^\s*[a-zA-Z_][\w.\[\]'"]*\s*(=|\+=|-=|\*=|\/=)\s*.+$/gm,
+      (line) => {
+        // Prose heuristic: 4+ consecutive alphabetic words → likely a sentence
+        if (/[a-zA-Z]+(?:\s+[a-zA-Z]+){3,}/.test(line)) return line;
+        return "[code removed]";
+      }
+    );
+
+    // 3c. Object method-call lines ending in parentheses with no trailing
+    //     punctuation that would suggest prose (period, comma, colon).
+    //     e.g. "arr.append(x)", "seen.add(val)" on their own line.
+    //     IMPORTANT: the identifier MUST contain a dot so that Big-O notation
+    //     like "O(n)", "O(n log n)", "O(1)" is never matched — those have no dot.
+    str = str.replace(
+      /^\s*[a-zA-Z_][\w]*(?:\.[a-zA-Z_][\w.]*)+\([^)]*\)\s*$/gm,
+      "[code removed]"
+    );
+
     return str.trim();
   }
 

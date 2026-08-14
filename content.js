@@ -235,28 +235,41 @@
     }
   }
 
-  // Show FAB immediately so users know the extension is active
+  // ─── Analyze FAB — proximity-reveal ───────────────────────────────────────
+  // CSS :hover can't work on a fully off-screen element, so we listen to
+  // mousemove on document and toggle .lci-fab-peek based on clientX proximity.
+  let _fabProximityListener = null;
+
   function showFABImmediately() {
     requestAnimationFrame(() => {
       const fab = document.querySelector('#lci-fab');
-      if (fab) {
-        fab.classList.remove('lci-hidden');
-        // FAB click: open overlay or manually trigger scan
-        fab.addEventListener('click', () => {
-          const overlay = document.querySelector('#lci-overlay');
-          if (overlay && !overlay.classList.contains('lci-hidden')) return;
-          // Try to find a pending result first
-          const hasResult = document.querySelector('[data-e2e-locator="submission-result"]');
-          if (hasResult && !isAnalyzing) {
-            isAnalyzing = false;
-            _lastAnalysisKey = ''; // reset dedup so FAB-triggered scan works
-            checkDOMForResult(true); // Force manual run
-          } else {
-            // Just open the overlay to show last analysis or empty state
-            showOverlay();
-            showSection('lci-analysis');
+      if (!fab) return;
+
+      fab.classList.remove('lci-hidden');
+
+      // Click: open panel + trigger fresh analysis
+      fab.addEventListener('click', () => {
+        showOverlay();
+        showSection('lci-analysis');
+        isAnalyzing = false;
+        lastSubmissionId = null;
+        _lastAnalysisKey = ''; // reset dedup so manual trigger always fires
+        checkDOMForResult(true, true); // force + bypass cache
+      });
+
+      // Proximity listener — show when cursor ≤ 60px from left, hide when > 80px
+      // Using a small hysteresis band (60/80) to avoid flicker at the boundary.
+      if (!_fabProximityListener) {
+        _fabProximityListener = (e) => {
+          const f = document.querySelector('#lci-fab');
+          if (!f || f.classList.contains('lci-hidden')) return;
+          if (e.clientX <= 60) {
+            f.classList.add('lci-fab-peek');
+          } else if (e.clientX > 80) {
+            f.classList.remove('lci-fab-peek');
           }
-        });
+        };
+        document.addEventListener('mousemove', _fabProximityListener);
       }
     });
   }
@@ -314,10 +327,20 @@
       return;
     }
 
-    // Dedupe by submission ID if available
-    const subId = data.submission_id || data.id || `${data.status_msg}-${Math.floor(Date.now() / 3000)}`;
-    if (subId === lastSubmissionId) return;
+    // Dedupe: use submission_id when available (most reliable).
+    // Fall back to title+status only — NOT runtime/memory, because the XHR
+    // /check/ path and the GraphQL path can return different runtime strings
+    // for the exact same submission, causing the key to differ and firing twice.
+    // hookSubmitButton() resets lastSubmissionId=null on every click, so a
+    // genuine new submission always gets a fresh run even with the same verdict.
+    const subId = data.submission_id || data.id ||
+      `${currentProblemMeta.problemTitle}::${data.status_msg}`;
+    if (subId === lastSubmissionId) {
+      console.log('[LCI] Duplicate network event, skipping:', subId);
+      return;
+    }
     lastSubmissionId = subId;
+    console.log('[LCI] Network path firing analysis. subId:', subId);
 
     submitPending = false;  // consume the gate
     chrome.storage.local.get("lci_auto_analyze", (dataStorage) => {
@@ -795,9 +818,10 @@
   </div>
 </div>
 
-<!-- Floating Action Button (shown when panel is closed) -->
-<button id="lci-fab" class="lci-fab lci-hidden" title="Open Complexity Insight" aria-label="Open LeetCode Complexity Insight">
-  <span>⚡</span>
+<!-- Analyze FAB (peek-on-hover, left edge) -->
+<button id="lci-fab" class="lci-fab lci-hidden" title="Manually analyze current solution" aria-label="Analyze complexity">
+  <span class="lci-fab-icon">⚡</span>
+  <span class="lci-fab-label">Analyze</span>
 </button>
     `;
   }
@@ -809,7 +833,7 @@
       const fab = document.querySelector("#lci-fab");
       const dragHandle = document.querySelector("#lci-drag-handle");
 
-      // Close
+      // Close — reveal the FAB again
       document.querySelector("#lci-close-btn")?.addEventListener("click", () => {
         overlay?.classList.add("lci-hidden");
         fab?.classList.remove("lci-hidden");
@@ -820,11 +844,15 @@
         panel?.classList.toggle("lci-minimized");
       });
 
-      // FAB — always un-minimize when reopening so user never sees a blank header-only panel
+      // Analyze FAB — open panel + manual fresh analysis
       fab?.addEventListener("click", () => {
         overlay?.classList.remove("lci-hidden");
         panel?.classList.remove("lci-minimized");
         fab?.classList.add("lci-hidden");
+        isAnalyzing = false;
+        lastSubmissionId = null;
+        _lastAnalysisKey = '';
+        checkDOMForResult(true, true); // force + bypass cache
       });
 
       // Theme
@@ -1062,8 +1090,8 @@
   // ─── Overlay View Control ──────────────────────────────────────────────────
   function showOverlay() {
     const overlay = document.querySelector("#lci-overlay");
-    const panel = document.querySelector("#lci-panel");
-    const fab = document.querySelector("#lci-fab");
+    const panel   = document.querySelector("#lci-panel");
+    const fab     = document.querySelector("#lci-fab");
     overlay?.classList.remove("lci-hidden");
     panel?.classList.remove("lci-minimized"); // always un-minimize when opening programmatically
     overlay?.classList.add("lci-enter");
@@ -1278,7 +1306,8 @@
   function escHtml(s) {
     return String(s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
   }
 
   function formatDate(iso) {
