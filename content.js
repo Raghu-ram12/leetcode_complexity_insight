@@ -265,7 +265,7 @@
   // This prevents re-triggering on the same result page (unlike time-based dedup)
   let _lastAnalysisKey = '';
 
-  function checkDOMForResult(force = false) {
+  function checkDOMForResult(force = false, bypassCache = false) {
     // Guard: only run if user has clicked Submit (or forced via FAB/buttons click) — prevents firing on stale page state
     if (!submitPending && !force) return;
 
@@ -298,7 +298,7 @@
       status_msg: verdict,
       runtime: document.querySelector('[data-e2e-locator="submission-runtime"]')?.textContent?.trim(),
       memory: document.querySelector('[data-e2e-locator="submission-memory"]')?.textContent?.trim(),
-    });
+    }, bypassCache);
   }
 
   async function handleSubmissionResultData(data) {
@@ -330,13 +330,23 @@
   }
 
   // ─── Analysis Trigger ──────────────────────────────────────────────────────
-  async function triggerAnalysis(resultData) {
+  async function triggerAnalysis(resultData, bypassCache = false) {
     isAnalyzing = true;
 
     try {
+      if (!resultData) resultData = {};
+
       // Get code from session storage (captured on submit click) or request fresh
-      let code = sessionStorage.getItem("lci_pending_code") || pendingCode;
-      let language = sessionStorage.getItem("lci_pending_lang") || pendingLanguage;
+      let code = "";
+      let language = "";
+      try {
+        code = sessionStorage.getItem("lci_pending_code") || pendingCode;
+        language = sessionStorage.getItem("lci_pending_lang") || pendingLanguage;
+      } catch (e) {
+        console.warn("[LCI] sessionStorage access blocked:", e);
+        code = pendingCode;
+        language = pendingLanguage;
+      }
 
       if (!code) {
         const fresh = await requestCodeFromPageContext();
@@ -351,23 +361,36 @@
       const verdict = resultData.status_msg || "Unknown";
       const runtime = resultData.runtime || extractStatFromDOM("runtime");
       const memory = resultData.memory || extractStatFromDOM("memory");
-      const runtimePercentile = resultData.runtime_percentile
-        ? `Beats ${parseFloat(resultData.runtime_percentile).toFixed(1)}% of users`
-        : extractPercentileFromDOM("runtime");
-      const memoryPercentile = resultData.memory_percentile
-        ? `Beats ${parseFloat(resultData.memory_percentile).toFixed(1)}% of users`
-        : extractPercentileFromDOM("memory");
+
+      let runtimePercentile = null;
+      let memoryPercentile = null;
+      try {
+        runtimePercentile = resultData.runtime_percentile
+          ? `Beats ${parseFloat(resultData.runtime_percentile).toFixed(1)}% of users`
+          : extractPercentileFromDOM("runtime");
+      } catch (e) {
+        runtimePercentile = extractPercentileFromDOM("runtime");
+      }
+
+      try {
+        memoryPercentile = resultData.memory_percentile
+          ? `Beats ${parseFloat(resultData.memory_percentile).toFixed(1)}% of users`
+          : extractPercentileFromDOM("memory");
+      } catch (e) {
+        memoryPercentile = extractPercentileFromDOM("memory");
+      }
 
       const payload = {
         code: code || "(code unavailable)",
         language: language || extractLanguageFromDOM(),
-        problemTitle: currentProblemMeta.problemTitle,
-        difficulty: currentProblemMeta.difficulty,
+        problemTitle: currentProblemMeta?.problemTitle || "Unknown Problem",
+        difficulty: currentProblemMeta?.difficulty || "Unknown",
         verdict,
         runtime,
         memory,
         runtimePercentile,
         memoryPercentile,
+        bypassCache,
       };
 
       console.log("[LCI] Triggering analysis:", payload.problemTitle, payload.verdict);
@@ -834,7 +857,7 @@
         isAnalyzing = false;
         lastSubmissionId = null;
         _lastAnalysisKey = ''; // reset dedup so re-analyze re-triggers analysis
-        checkDOMForResult(true);
+        checkDOMForResult(true, true);
       });
 
       // Settings button
@@ -1269,11 +1292,15 @@
 
   function humanizeError(err) {
     if (!err) return "An unexpected error occurred.";
-    if (err === "NO_API_KEY") return "No API key set. Click the extension icon ⚡ in your toolbar to add your free Gemini API key.";
-    if (err.includes("401") || err.includes("403")) return "Invalid API key. Check your Gemini API key in the extension settings.";
-    if (err.includes("429")) return "Rate limit reached. Please wait a moment and try again.";
-    if (err.includes("network") || err.includes("fetch")) return "Network error. Please check your internet connection.";
-    return err.length > 120 ? err.substring(0, 120) + "…" : err;
+    const errStr = typeof err === "string" ? err : (err.message || String(err));
+    if (errStr === "NO_API_KEY") return "No API key set. Click the extension icon ⚡ in your toolbar to add your free Gemini API key.";
+    if (errStr.includes("401") || errStr.includes("403")) return "Invalid API key. Check your Gemini API key in the extension settings.";
+    if (errStr.includes("429")) return "Rate limit reached. Please wait a moment and try again.";
+    if (errStr.toLowerCase().includes("503") || errStr.toLowerCase().includes("overloaded") || errStr.toLowerCase().includes("high demand") || errStr.toLowerCase().includes("unavailable")) {
+      return "Google's Gemini servers are temporarily overloaded (503 High Demand). This is a Google service-wide issue, not your quota. Please try again in a few moments.";
+    }
+    if (errStr.includes("network") || errStr.includes("fetch")) return "Network error. Please check your internet connection.";
+    return errStr.length > 120 ? errStr.substring(0, 120) + "…" : errStr;
   }
 
   function debounce(fn, ms) {

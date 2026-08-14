@@ -34,11 +34,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 async function handleAnalysis(payload) {
   const cacheKey = buildCacheKey(payload);
 
-  // Check cache first
-  const cached = await getCached(cacheKey);
-  if (cached) {
-    console.log("[LCI] Returning cached analysis for:", payload.problemTitle);
-    return { ...cached, fromCache: true };
+  // Check cache first (unless bypassed)
+  if (!payload.bypassCache) {
+    const cached = await getCached(cacheKey);
+    if (cached) {
+      console.log("[LCI] Returning cached analysis for:", payload.problemTitle);
+      return { ...cached, fromCache: true };
+    }
+  } else {
+    console.log("[LCI] Bypassing cache for:", payload.problemTitle);
   }
 
   // Get API key and model
@@ -110,32 +114,91 @@ async function callGeminiAPI(apiKey, model, payload) {
     },
   };
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(requestBody),
-  });
+  const maxRetries = 3;
+  let attempt = 0;
 
-  if (!response.ok) {
-    const errText = await response.text();
-    let errMsg = `Gemini API error ${response.status}`;
+  while (true) {
+    let response;
     try {
-      const errJson = JSON.parse(errText);
-      if (errJson.error?.message) errMsg = errJson.error.message;
-    } catch {}
-    throw new Error(errMsg);
-  }
+      response = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody),
+      });
+    } catch (fetchErr) {
+      if (attempt < maxRetries) {
+        attempt++;
+        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 300;
+        console.warn(`[LCI] Fetch failed: ${fetchErr.message}. Retrying in ${Math.round(delay)}ms (attempt ${attempt}/${maxRetries})...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+      throw fetchErr;
+    }
 
-  const data = await response.json();
-  const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-  if (!rawText) throw new Error("Empty response from Gemini API");
+    if (!response.ok) {
+      const errText = await response.text();
+      let errMsg = `Gemini API error ${response.status}`;
+      try {
+        const errJson = JSON.parse(errText);
+        if (errJson.error?.message) errMsg = errJson.error.message;
+      } catch {}
+
+      // Retry on 429 (Rate Limit) or 503/504 (Server Overload / Timeout)
+      if ((response.status === 429 || response.status === 503 || response.status === 504) && attempt < maxRetries) {
+        attempt++;
+        const delay = Math.pow(2, attempt) * 1000 + Math.random() * 300;
+        console.warn(`[LCI] Gemini API error ${response.status}: ${errMsg}. Retrying in ${Math.round(delay)}ms (attempt ${attempt}/${maxRetries})...`);
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        continue;
+      }
+
+      throw new Error(errMsg);
+    }
+
+    const data = await response.json();
+    const rawText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!rawText) throw new Error("Empty response from Gemini API");
+
+    try {
+      return extractJSON(rawText);
+    } catch (err) {
+      console.error("[LCI] Failed to parse JSON response. Raw text was:", rawText);
+      throw new Error("Failed to parse JSON response from Gemini API");
+    }
+  }
+}
+
+function extractJSON(text) {
+  if (!text) return null;
+  let cleanText = text.trim();
+
+  // Strip markdown formatting if present
+  if (cleanText.startsWith("```json")) {
+    cleanText = cleanText.substring(7);
+  } else if (cleanText.startsWith("```")) {
+    cleanText = cleanText.substring(3);
+  }
+  if (cleanText.endsWith("```")) {
+    cleanText = cleanText.substring(0, cleanText.length - 3);
+  }
+  cleanText = cleanText.trim();
 
   try {
-    // Gemini with responseMimeType=application/json should return clean JSON
-    const parsed = JSON.parse(rawText);
-    return parsed;
-  } catch {
-    throw new Error("Failed to parse JSON response from Gemini API");
+    return JSON.parse(cleanText);
+  } catch (e) {
+    // Fallback: try to locate the main JSON object block
+    const firstOpen = cleanText.indexOf('{');
+    const lastClose = cleanText.lastIndexOf('}');
+    if (firstOpen !== -1 && lastClose !== -1 && lastClose > firstOpen) {
+      const candidate = cleanText.substring(firstOpen, lastClose + 1);
+      try {
+        return JSON.parse(candidate);
+      } catch (innerError) {
+        console.error("[LCI] Fallback JSON parse failed:", innerError);
+      }
+    }
+    throw e;
   }
 }
 
