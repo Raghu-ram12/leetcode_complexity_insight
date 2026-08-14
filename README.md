@@ -2,7 +2,6 @@
 
 A Chrome extension that automatically analyzes your LeetCode submissions for **time and space complexity**, detects algorithmic patterns, and suggests better approaches — all in **plain English, never showing code**.
 
-![Extension Preview](icons/icon128.png)
 
 ---
 
