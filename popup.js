@@ -2,10 +2,11 @@
  * popup.js — Extension popup logic
  * Handles: API key save/load/clear, enable toggle, cache stats
  *
- * Notes:
- * - window.confirm() is NOT available in Chrome extension popups — never use it
- * - chrome.tabs.create() requires the 'tabs' permission in manifest
- * - External font loading may be blocked by MV3 CSP — use system fonts only
+ * FIX #8:  Toggle shows warning + inline "Reload Now" button
+ * FIX #9:  Cache shows real byte count via getBytesInUse
+ * FIX #13: GitHub link points to real repo URL
+ * FIX #16: Privacy note font increased via CSS
+ * FIX #20: Status has 2s fallback timeout so "Checking…" never hangs
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -19,14 +20,23 @@ document.addEventListener("DOMContentLoaded", () => {
   const toggleEnabled = document.getElementById("toggle-enabled");
   const clearCacheBtn = document.getElementById("clear-cache-btn");
   const cacheCount = document.getElementById("cache-count");
+  const cacheSize = document.getElementById("cache-size");
   const getKeyLink = document.getElementById("get-key-link");
-
+  const githubLink = document.getElementById("github-link");
   const modelSelect = document.getElementById("model-select");
+  const reloadContainer = document.getElementById("reload-prompt-container");
+
+  // FIX #20: Status fallback — if storage is slow, don't hang on "Checking…"
+  const statusTimeout = setTimeout(() => {
+    setStatus("inactive", "No API key");
+  }, 2000);
 
   // ─── Load Saved Settings ───────────────────────────────────────────────────
   chrome.storage.local.get(
     ["geminiApiKey", "lci_enabled", "lci_history", "geminiModel"],
     (data) => {
+      clearTimeout(statusTimeout);
+
       if (data.geminiApiKey) {
         apiKeyInput.value = data.geminiApiKey;
         setStatus("active", "Ready");
@@ -38,10 +48,29 @@ document.addEventListener("DOMContentLoaded", () => {
 
       toggleEnabled.checked = data.lci_enabled !== false; // default: true
 
+      // FIX #3/#9: Show "0" immediately, then update with real count + size
       const count = (data.lci_history || []).length;
       cacheCount.textContent = count;
+      updateCacheSize();
     }
   );
+
+  // FIX #9: Show storage bytes used
+  function updateCacheSize() {
+    if (!chrome.storage.local.getBytesInUse) {
+      if (cacheSize) cacheSize.textContent = "";
+      return;
+    }
+    chrome.storage.local.getBytesInUse(null, (bytes) => {
+      if (cacheSize) {
+        if (bytes < 1024) {
+          cacheSize.textContent = `~${bytes} B used`;
+        } else {
+          cacheSize.textContent = `~${(bytes / 1024).toFixed(1)} KB used`;
+        }
+      }
+    });
+  }
 
   // ─── Save API Key ──────────────────────────────────────────────────────────
   saveKeyBtn.addEventListener("click", () => {
@@ -58,7 +87,7 @@ document.addEventListener("DOMContentLoaded", () => {
         showFeedback("✓ Key saved! (Unusual format)", "error");
       }
       setStatus("active", "Ready");
-      
+
       // Fetch models with the new key
       chrome.storage.local.get("geminiModel", (data) => {
         fetchAndPopulateModels(key, data.geminiModel);
@@ -98,6 +127,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Enter") saveKeyBtn.click();
   });
 
+  // ─── Allowed models (single source of truth) ──────────────────────────────
+  const ALLOWED_MODELS = [
+    { value: "models/gemini-2.0-flash", label: "Gemini 2.0 Flash (Default)" },
+    { value: "models/gemini-1.5-flash", label: "Gemini 1.5 Flash" },
+    { value: "models/gemini-1.5-pro",   label: "Gemini 1.5 Pro" },
+  ];
+
   // ─── Dynamic Model Fetcher Helpers ─────────────────────────────────────────
   function fetchAndPopulateModels(apiKey, selectedModel) {
     if (!apiKey) {
@@ -116,42 +152,32 @@ document.addEventListener("DOMContentLoaded", () => {
         if (!data.models || data.models.length === 0) {
           throw new Error("No models returned");
         }
-        
-        const geminiModels = data.models.filter(m => 
-          m.supportedGenerationMethods?.includes("generateContent") &&
-          m.name?.startsWith("models/gemini-")
-        );
 
-        if (geminiModels.length === 0) {
-          throw new Error("No compatible Gemini models found");
-        }
+        // Only show the curated allowed models that the API confirms exist
+        const availableNames = new Set(data.models.map(m => m.name));
+        const filtered = ALLOWED_MODELS.filter(m => availableNames.has(m.value));
+
+        // Fall back to full allowed list if API doesn't confirm any (e.g. key restriction)
+        const toShow = filtered.length > 0 ? filtered : ALLOWED_MODELS;
 
         modelSelect.innerHTML = "";
-        geminiModels.forEach(m => {
+        toShow.forEach(m => {
           const opt = document.createElement("option");
-          opt.value = m.name;
-          opt.textContent = m.displayName || m.name.replace("models/", "");
-          if (m.name === selectedModel) {
-            opt.selected = true;
-          }
+          opt.value = m.value;
+          opt.textContent = m.label;
+          if (m.value === selectedModel) opt.selected = true;
           modelSelect.appendChild(opt);
         });
 
+        // If the saved model isn't in our allowed list, default to first
         const currentOptions = Array.from(modelSelect.options).map(o => o.value);
         if (selectedModel && !currentOptions.includes(selectedModel)) {
-          const opt = document.createElement("option");
-          opt.value = selectedModel;
-          opt.textContent = selectedModel.replace("models/", "") + " (Custom)";
-          opt.selected = true;
-          modelSelect.appendChild(opt);
+          modelSelect.value = currentOptions[0];
+          chrome.storage.local.set({ geminiModel: currentOptions[0] });
         } else if (!selectedModel) {
-          const defaultModel = "models/gemini-2.0-flash";
-          if (currentOptions.includes(defaultModel)) {
-            modelSelect.value = defaultModel;
-            chrome.storage.local.set({ geminiModel: defaultModel });
-          } else {
-            chrome.storage.local.set({ geminiModel: modelSelect.value });
-          }
+          const def = ALLOWED_MODELS[0].value;
+          modelSelect.value = currentOptions.includes(def) ? def : currentOptions[0];
+          chrome.storage.local.set({ geminiModel: modelSelect.value });
         }
       })
       .catch(err => {
@@ -161,40 +187,61 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function resetModelDropdown(selectedModel) {
-    const fallbacks = [
-      { value: "models/gemini-2.0-flash", label: "Gemini 2.0 Flash (Default)" },
-      { value: "models/gemini-1.5-flash", label: "Gemini 1.5 Flash" },
-      { value: "models/gemini-1.5-pro", label: "Gemini 1.5 Pro" }
-    ];
     modelSelect.innerHTML = "";
-    fallbacks.forEach(f => {
+    ALLOWED_MODELS.forEach(f => {
       const opt = document.createElement("option");
       opt.value = f.value;
       opt.textContent = f.label;
       if (f.value === selectedModel) opt.selected = true;
       modelSelect.appendChild(opt);
     });
-    if (selectedModel && !fallbacks.some(f => f.value === selectedModel)) {
-      const opt = document.createElement("option");
-      opt.value = selectedModel;
-      opt.textContent = selectedModel.replace("models/", "") + " (Custom)";
-      opt.selected = true;
-      modelSelect.appendChild(opt);
-    } else if (!selectedModel) {
-      modelSelect.value = "models/gemini-2.0-flash";
-      chrome.storage.local.set({ geminiModel: "models/gemini-2.0-flash" });
+    if (!selectedModel || !ALLOWED_MODELS.some(f => f.value === selectedModel)) {
+      modelSelect.value = ALLOWED_MODELS[0].value;
+      chrome.storage.local.set({ geminiModel: ALLOWED_MODELS[0].value });
     }
   }
 
-  // ─── Enable Toggle ─────────────────────────────────────────────────────────
+  // ─── Enable Toggle (FIX #8) ────────────────────────────────────────────────
+  // Shows warning color + inline "Reload Now" button since change requires reload
   toggleEnabled.addEventListener("change", () => {
     const enabled = toggleEnabled.checked;
     chrome.storage.local.set({ lci_enabled: enabled });
     setStatus(enabled ? "active" : "inactive", enabled ? "Ready" : "Disabled");
-    // lci_enabled is read at boot time by content.js, so already-open LeetCode
-    // tabs won't see this change until reloaded — notify the user.
-    showFeedback(enabled ? "Enabled — reload LeetCode tabs to activate." : "Disabled — reload LeetCode tabs to deactivate.", "success");
+
+    // FIX #8: Show reload prompt with actual button
+    showReloadPrompt(
+      enabled
+        ? "Enabled — reload open LeetCode tabs to activate."
+        : "Disabled — reload open LeetCode tabs to deactivate."
+    );
   });
+
+  // FIX #8: Inline reload row with a "Reload Now" button
+  function showReloadPrompt(msg) {
+    if (!reloadContainer) return;
+    reloadContainer.innerHTML = "";
+
+    const row = document.createElement("div");
+    row.className = "popup-reload-row";
+    row.innerHTML = `
+      <span class="popup-reload-text">${msg}</span>
+      <button class="popup-reload-btn" id="do-reload-btn">Reload Now</button>
+    `;
+    reloadContainer.appendChild(row);
+
+    document.getElementById("do-reload-btn")?.addEventListener("click", () => {
+      chrome.tabs.query({ url: ["*://leetcode.com/*", "*://www.leetcode.com/*"] }, (tabs) => {
+        tabs.forEach(tab => chrome.tabs.reload(tab.id));
+        row.innerHTML = `<span class="popup-reload-text" style="color:var(--green)">✓ Reloaded ${tabs.length} LeetCode tab${tabs.length !== 1 ? 's' : ''}.</span>`;
+        setTimeout(() => { reloadContainer.innerHTML = ""; }, 2500);
+      });
+    });
+
+    // Auto-dismiss after 8 seconds
+    setTimeout(() => {
+      if (reloadContainer.contains(row)) reloadContainer.innerHTML = "";
+    }, 8000);
+  }
 
   // ─── Clear Cache (no confirm() — blocked in extension popups) ─────────────
   clearCacheBtn.addEventListener("click", () => {
@@ -223,12 +270,14 @@ document.addEventListener("DOMContentLoaded", () => {
           (k) => k.startsWith("v1_") || k === "lci_history"
         );
         if (keysToRemove.length === 0) {
-          cacheCount.textContent = "0";
+          animateCacheCount(0);
+          if (cacheSize) cacheSize.textContent = "";
           showFeedback("Cache already empty.", "success");
           return;
         }
         chrome.storage.local.remove(keysToRemove, () => {
-          cacheCount.textContent = "0";
+          animateCacheCount(0);
+          if (cacheSize) cacheSize.textContent = "~0 B used";
           showFeedback("Cache cleared.", "success");
         });
       });
@@ -239,11 +288,24 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
+  // FIX #9: Animate cache count number
+  function animateCacheCount(newVal) {
+    if (!cacheCount) return;
+    cacheCount.style.transform = "scale(1.3)";
+    cacheCount.textContent = newVal;
+    setTimeout(() => { cacheCount.style.transform = "scale(1)"; }, 200);
+  }
+
   // ─── Get Free Key Link — opens in new tab ─────────────────────────────────
-  // Use chrome.tabs.create (requires 'tabs' permission in manifest)
   getKeyLink.addEventListener("click", (e) => {
     e.preventDefault();
     chrome.tabs.create({ url: "https://aistudio.google.com/app/apikey" });
+  });
+
+  // FIX #13: GitHub link — opens in new tab (real URL set in HTML)
+  githubLink?.addEventListener("click", (e) => {
+    e.preventDefault();
+    chrome.tabs.create({ url: githubLink.href });
   });
 
   // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -254,7 +316,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function showFeedback(msg, type = "success") {
     keyFeedback.textContent = msg;
-    keyFeedback.className = `popup-feedback ${type === "error" ? "error" : ""}`;
+    // FIX #8: warning type for reload messages
+    const cls = type === "error" ? "error" : type === "warning" ? "warning" : "";
+    keyFeedback.className = `popup-feedback ${cls}`;
     setTimeout(() => {
       keyFeedback.classList.add("fade");
       setTimeout(() => {

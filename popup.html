@@ -8,6 +8,7 @@
 </head>
 <body>
   <div class="popup-root">
+
     <!-- Header -->
     <header class="popup-header">
       <div class="popup-logo">
@@ -23,10 +24,18 @@
       </div>
     </header>
 
+    <!-- Accent divider bar -->
+    <div class="popup-accent-bar"></div>
+
     <!-- API Key Section -->
     <section class="popup-section" id="section-apikey">
       <div class="popup-section-label">
-        <span class="section-label-text">Gemini API Key</span>
+        <span class="section-label-text">
+          <svg class="section-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="8" cy="15" r="4"/><path d="M12 15h8M16 11v4"/>
+          </svg>
+          Gemini API Key
+        </span>
         <a href="https://aistudio.google.com/app/apikey" target="_blank" class="popup-link" id="get-key-link">Get free key ↗</a>
       </div>
       <div class="popup-input-wrap">
@@ -50,8 +59,16 @@
         <button class="popup-btn popup-btn-ghost" id="clear-key-btn">Clear</button>
       </div>
       <div id="key-feedback" class="popup-feedback" aria-live="polite"></div>
-      <div class="popup-section-label" style="margin-top: 10px; margin-bottom: 6px;">
-        <span class="section-label-text">Model</span>
+      <!-- Reload prompt injected here by JS when needed -->
+      <div id="reload-prompt-container"></div>
+
+      <div class="popup-section-label" style="margin-top: 14px; margin-bottom: 8px;">
+        <span class="section-label-text">
+          <svg class="section-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/>
+          </svg>
+          Model
+        </span>
       </div>
       <div class="popup-select-wrap">
         <select id="model-select" class="popup-select" aria-label="Select Gemini Model">
@@ -60,22 +77,29 @@
           <option value="models/gemini-1.5-pro">Gemini 1.5 Pro</option>
         </select>
       </div>
+      <div class="popup-model-hint">Flash = faster &amp; free-tier friendly · Pro = more thorough, slower</div>
+
       <div class="popup-privacy-note">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
         <span>Your key is stored locally only. Code is sent to Google's Gemini API for analysis — never stored by this extension.</span>
       </div>
     </section>
 
-    <!-- Quick Status / Controls -->
+    <!-- Extension Controls -->
     <section class="popup-section" id="section-controls">
       <div class="popup-section-label">
-        <span class="section-label-text">Extension</span>
+        <span class="section-label-text">
+          <svg class="section-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
+          </svg>
+          Extension
+        </span>
       </div>
       <div class="popup-toggles">
         <div class="popup-toggle-row">
           <div>
-            <div class="toggle-label">Enabled</div>
-            <div class="toggle-sub">Auto-analyze submissions</div>
+            <div class="toggle-label">Auto-analyze</div>
+            <div class="toggle-sub">Analyze submissions automatically</div>
           </div>
           <label class="toggle-switch" for="toggle-enabled">
             <input type="checkbox" id="toggle-enabled" checked aria-label="Enable auto-analysis" />
@@ -88,12 +112,18 @@
     <!-- Cache / History -->
     <section class="popup-section" id="section-cache">
       <div class="popup-section-label">
-        <span class="section-label-text">Cache</span>
+        <span class="section-label-text">
+          <svg class="section-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+          </svg>
+          Cache
+        </span>
       </div>
       <div class="popup-cache-info">
         <div class="popup-cache-stat">
-          <div class="cache-stat-value" id="cache-count">—</div>
+          <div class="cache-stat-value" id="cache-count">0</div>
           <div class="cache-stat-label">Analyses cached</div>
+          <div class="cache-stat-size" id="cache-size"></div>
         </div>
         <button class="popup-btn popup-btn-ghost popup-btn-danger" id="clear-cache-btn">Clear cache</button>
       </div>
@@ -102,7 +132,10 @@
     <!-- Footer -->
     <footer class="popup-footer">
       <span class="popup-version">v1.0.0</span>
-      <a href="https://github.com" target="_blank" class="popup-link popup-link-footer">GitHub ↗</a>
+      <a href="https://github.com/yourusername/leet_code_analyzer" target="_blank" class="popup-link popup-link-footer" id="github-link">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" style="vertical-align:middle;margin-right:3px"><path d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.531 1.032 1.531 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0 1 12 6.844a9.59 9.59 0 0 1 2.504.337c1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.02 10.02 0 0 0 22 12.017C22 6.484 17.522 2 12 2z"/></svg>
+        GitHub ↗
+      </a>
     </footer>
   </div>
   <script src="popup.js"></script>
