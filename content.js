@@ -1323,6 +1323,9 @@
   // ─── Render Analysis ───────────────────────────────────────────────────────
   function renderAnalysis(data) {
     if (!data) return;
+    // A history selection is a valid analysis result too. Keep navigation from
+    // falling back to the idle home screen when the user returns from history.
+    _hasAnalysisResult = true;
 
     setText("#lci-problem-title", data.problemTitle || "Unknown Problem");
 
@@ -1438,7 +1441,15 @@
       const activate = () => {
         const key = item.dataset.cacheKey;
         chrome.storage.local.get(key, (data) => {
-          if (data[key]) { renderAnalysis(data[key]); showAnalysisView(); }
+          if (data[key]) {
+            renderAnalysis(data[key]);
+            showAnalysisView();
+            return;
+          }
+          const listEl = document.querySelector("#lci-history-list");
+          if (listEl) {
+            listEl.insertAdjacentHTML("afterbegin", '<p class="lci-empty-state">This saved analysis is no longer available in the cache.</p>');
+          }
         });
       };
       item.addEventListener("click", activate);

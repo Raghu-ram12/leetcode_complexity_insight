@@ -785,7 +785,10 @@ button:focus-visible, a:focus-visible, select:focus-visible, input:focus-visible
 @media (max-width: 380px) {
   html, body { width: 100%; }
   .popup-header { padding-left: 13px; padding-right: 13px; }
-  .popup-streak-indicator { display: none; }
+  .popup-logo { gap: 7px; }
+  .popup-streak-indicator { display: flex; padding: 3px 7px; gap: 4px; }
+  .streak-text, .status-text { font-size: 9px; }
+  .popup-status { padding: 4px 7px 4px 6px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -101,17 +101,16 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    // Recent problems solved (accepted only)
+    // Recent analyzed problems, newest first.
     const recentList = document.getElementById("recent-problems-list");
     const recentEmpty = document.getElementById("recent-empty-problems");
-    const accepted = (history || [])
-      .filter(h => h.verdict === "Accepted")
+    const recent = (history || [])
       .slice(0, 6);
 
     if (recentList && recentEmpty) {
-      if (accepted.length > 0) {
+      if (recent.length > 0) {
         recentEmpty.style.display = "none";
-        recentList.innerHTML = accepted.map((entry, i) => `
+        recentList.innerHTML = recent.map((entry, i) => `
           <div class="recent-problem-item" style="opacity: ${1 - i * 0.1}; transition: opacity 0.3s;">
             <span class="recent-problem-title">${escHtml(entry.problemTitle || "Unknown Problem")}</span>
             <span class="recent-problem-date">${formatDate(entry.analyzedAt)}</span>

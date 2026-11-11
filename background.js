@@ -73,7 +73,37 @@ async function handleAnalysis(payload) {
     const cached = await getCached(cacheKey);
     if (cached) {
       console.log("[LCI] Returning cached analysis for:", payload.problemTitle);
-      return { ...cached, fromCache: true };
+      // Refresh submission metadata on a cache hit. This keeps difficulty and
+      // the recent history accurate even when the analysis itself is reused.
+      const refreshed = {
+        ...cached,
+        problemTitle: payload.problemTitle || cached.problemTitle,
+        difficulty: isKnownDifficulty(payload.difficulty)
+          ? payload.difficulty
+          : cached.difficulty || payload.difficulty || "Unknown",
+        analyzedAt: new Date().toISOString(),
+        submissionMeta: {
+          ...cached.submissionMeta,
+          language: payload.language ?? cached.submissionMeta?.language,
+          verdict: payload.verdict ?? cached.submissionMeta?.verdict,
+          runtime: payload.runtime ?? cached.submissionMeta?.runtime,
+          memory: payload.memory ?? cached.submissionMeta?.memory,
+          runtimePercentile: payload.runtimePercentile ?? cached.submissionMeta?.runtimePercentile,
+          memoryPercentile: payload.memoryPercentile ?? cached.submissionMeta?.memoryPercentile,
+        },
+      };
+      await storeCache(cacheKey, refreshed);
+      await pushToHistory({
+        cacheKey,
+        problemTitle: refreshed.problemTitle,
+        difficulty: refreshed.difficulty,
+        verdict: payload.verdict ?? cached.submissionMeta?.verdict,
+        language: payload.language ?? cached.submissionMeta?.language,
+        analyzedAt: refreshed.analyzedAt,
+        timeComplexity: refreshed.timeComplexity,
+        spaceComplexity: refreshed.spaceComplexity,
+      });
+      return { ...refreshed, fromCache: true };
     }
   } else {
     console.log("[LCI] Bypassing cache for:", payload.problemTitle);
@@ -374,6 +404,10 @@ function buildCacheKey(payload) {
   const safeLang = (payload.language || "unknown").toLowerCase();
   const safeDifficulty = (payload.difficulty || "unknown").toLowerCase();
   return `${CACHE_VERSION}_${safeTitle}_${safeLang}_${safeDifficulty}`;
+}
+
+function isKnownDifficulty(value) {
+  return ["easy", "medium", "hard"].includes(String(value || "").toLowerCase());
 }
 
 function getCached(key) {
