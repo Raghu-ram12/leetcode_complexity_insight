@@ -135,9 +135,14 @@ leet_code_analyzer/
 2. It also intercepts XHR/fetch calls to detect when submission results arrive (more reliable than DOM polling)
 3. On submission, code + metadata are sent to **`background.js`**
 4. The background script checks the local cache — if a match exists, it returns immediately
-5. Otherwise, it calls **Gemini 2.0 Flash** with a carefully designed prompt that explicitly forbids code output and requires a structured JSON response
+5. Otherwise, it calls **Gemini 3.8 Flash** with a carefully designed prompt that explicitly forbids code output and requires a structured JSON response
 6. The response is validated and sanitized (code-block patterns are stripped as a safety net)
 7. The result is cached in `chrome.storage.local` and rendered in the floating overlay panel
+
+**📊 Streak Tracking**
+- Added streak tracking to reward consistent daily usage
+- Track your current streak and best streak
+- Persistent across browser sessions, private and local only
 
 ---
 

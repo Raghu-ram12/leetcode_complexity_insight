@@ -552,12 +552,11 @@
           <div class="lci-settings-label" style="margin-top: 10px;">Model</div>
           <div class="lci-settings-select-wrap">
             <select id="lci-model-select" class="lci-settings-select" aria-label="Select Gemini Model">
-              <option value="models/gemini-2.0-flash">Gemini 2.0 Flash (Default)</option>
-              <option value="models/gemini-1.5-flash">Gemini 1.5 Flash</option>
-              <option value="models/gemini-1.5-pro">Gemini 1.5 Pro</option>
+              <option value="models/gemini-3.8-flash">Gemini 3.8 Flash (Default)</option>
+              <option value="models/gemini-3.8-pro">Gemini 3.8 Pro</option>
             </select>
           </div>
-          <div class="lci-settings-model-hint">Flash = faster &amp; free-tier friendly · Pro = more thorough, slower</div>
+          <div class="lci-settings-model-hint">Flash = fastest, free-tier friendly · Pro = most thorough, slower</div>
 
           <div class="lci-settings-note">
             🔒 Stored locally only. Code is sent to Google Gemini for analysis.
@@ -1042,9 +1041,8 @@
 
   // ─── Allowed models (single source of truth — mirrors popup.js) ───────────
   const OVERLAY_ALLOWED_MODELS = [
-    { value: "models/gemini-2.0-flash", label: "Gemini 2.0 Flash (Default)" },
-    { value: "models/gemini-1.5-flash", label: "Gemini 1.5 Flash" },
-    { value: "models/gemini-1.5-pro",   label: "Gemini 1.5 Pro" },
+    { value: "models/gemini-3.8-flash", label: "Gemini 3.8 Flash (Default)" },
+    { value: "models/gemini-3.8-pro",   label: "Gemini 3.8 Pro" },
   ];
 
   function fetchAndPopulateOverlayModels(apiKey, selectedModel) {

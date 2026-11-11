@@ -25,6 +25,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const githubLink = document.getElementById("github-link");
   const modelSelect = document.getElementById("model-select");
   const reloadContainer = document.getElementById("reload-prompt-container");
+  const streakDot = document.getElementById("streak-dot");
+  const streakText = document.getElementById("streak-text");
 
   // FIX #20: Status fallback — if storage is slow, don't hang on "Checking…"
   const statusTimeout = setTimeout(() => {
@@ -52,8 +54,73 @@ document.addEventListener("DOMContentLoaded", () => {
       const count = (data.lci_history || []).length;
       cacheCount.textContent = count;
       updateCacheSize();
+
+      // ── Render home dashboard: streak + recent problems ──
+      renderHomeDashboard(data.lci_history || []);
     }
   );
+
+  // ─── Render Home Dashboard ─────────────────────────────────────────────────
+  function renderHomeDashboard(history) {
+    // Streak
+    chrome.runtime.sendMessage({ type: "GET_STREAK" }, (response) => {
+      const streak = response?.streak || { current: 0, best: 0, lastDate: null };
+      const currentEl = document.getElementById("streak-current-value");
+      const bestEl = document.getElementById("streak-best-value");
+      const dotEl = streakDot;
+      const textEl = streakText;
+
+      if (currentEl) currentEl.textContent = streak.current || 0;
+      if (bestEl) bestEl.textContent = streak.best || 0;
+
+      if (dotEl && textEl) {
+        dotEl.className = "status-dot streak-dot " + (streak.current > 0 ? "active" : "");
+        textEl.textContent = streak.current > 0
+          ? `${streak.current} day${streak.current !== 1 ? "s" : ""} streak`
+          : "No streak yet";
+      }
+    });
+
+    // Recent problems solved (accepted only)
+    const recentList = document.getElementById("recent-problems-list");
+    const recentEmpty = document.getElementById("recent-empty-problems");
+    const accepted = (history || [])
+      .filter(h => h.verdict === "Accepted")
+      .slice(0, 6);
+
+    if (recentList && recentEmpty) {
+      if (accepted.length > 0) {
+        recentEmpty.style.display = "none";
+        recentList.innerHTML = accepted.map((entry, i) => `
+          <div class="recent-problem-item" style="opacity: ${1 - i * 0.1}; transition: opacity 0.3s;">
+            <span class="recent-problem-title">${escHtml(entry.problemTitle || "Unknown Problem")}</span>
+            <span class="recent-problem-date">${formatDate(entry.analyzedAt)}</span>
+          </div>
+        `).join("");
+      } else {
+        recentEmpty.style.display = "block";
+        recentList.innerHTML = "";
+      }
+    }
+  }
+
+  // ─── Helper: escape HTML ─────────────────────────────────────────────────
+  function escHtml(s) {
+    return String(s || "")
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;").replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // ─── Helper: format date ─────────────────────────────────────────────────
+  function formatDate(iso) {
+    if (!iso) return "";
+    try {
+      return new Date(iso).toLocaleDateString(undefined, {
+        month: "short", day: "numeric",
+      });
+    } catch { return ""; }
+  }
 
   // FIX #9: Show storage bytes used
   function updateCacheSize() {
@@ -129,9 +196,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ─── Allowed models (single source of truth) ──────────────────────────────
   const ALLOWED_MODELS = [
-    { value: "models/gemini-2.0-flash", label: "Gemini 2.0 Flash (Default)" },
-    { value: "models/gemini-1.5-flash", label: "Gemini 1.5 Flash" },
-    { value: "models/gemini-1.5-pro",   label: "Gemini 1.5 Pro" },
+    { value: "models/gemini-3.8-flash", label: "Gemini 3.8 Flash (Default)" },
+    { value: "models/gemini-3.8-pro",   label: "Gemini 3.8 Pro" },
   ];
 
   // ─── Dynamic Model Fetcher Helpers ─────────────────────────────────────────

@@ -18,6 +18,13 @@
           <div class="popup-logo-sub">for LeetCode</div>
         </div>
       </div>
+
+      <!-- Streak indicator -->
+      <div class="popup-streak-indicator" id="popup-streak-indicator">
+        <span class="status-dot streak-dot" id="streak-dot"></span>
+        <span class="status-text streak-text" id="streak-text"></span>
+      </div>
+
       <div class="popup-status" id="popup-status">
         <span class="status-dot" id="status-dot"></span>
         <span class="status-text" id="status-text">Checking…</span>
@@ -26,6 +33,42 @@
 
     <!-- Accent divider bar -->
     <div class="popup-accent-bar"></div>
+
+    <!-- Home Dashboard Section (initially visible) -->
+    <section class="popup-section home-dashboard" id="home-dashboard-section">
+      <div class="popup-section-label">
+        <span class="section-label-text">
+          <svg class="section-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          Dashboard
+        </span>
+      </div>
+
+      <div class="home-dashboard-content">
+        <div class="streak-cards-row">
+          <div class="streak-card" id="streak-current-card">
+            <div class="streak-card-value" id="streak-current-value">0</div>
+            <div class="streak-card-label">Current Streak</div>
+          </div>
+          <div class="streak-card" id="streak-best-card">
+            <div class="streak-card-value" id="streak-best-value">0</div>
+            <div class="streak-card-label">Best Streak</div>
+          </div>
+        </div>
+        <div class="recent-problems-list">
+          <div class="recent-header">
+            <span class="recent-label">Recent Solved</span>
+          </div>
+          <div class="recent-problems" id="recent-problems-list">
+            <!-- Items injected by JS -->
+          </div>
+          <div class="recent-empty" id="recent-empty-problems">
+            No problems analyzed yet.
+          </div>
+        </div>
+      </div>
+    </section>
 
     <!-- API Key Section -->
     <section class="popup-section" id="section-apikey">
@@ -72,12 +115,11 @@
       </div>
       <div class="popup-select-wrap">
         <select id="model-select" class="popup-select" aria-label="Select Gemini Model">
-          <option value="models/gemini-2.0-flash">Gemini 2.0 Flash (Default)</option>
-          <option value="models/gemini-1.5-flash">Gemini 1.5 Flash</option>
-          <option value="models/gemini-1.5-pro">Gemini 1.5 Pro</option>
+          <option value="models/gemini-3.8-flash">Gemini 3.8 Flash (Default)</option>
+          <option value="models/gemini-3.8-pro">Gemini 3.8 Pro</option>
         </select>
       </div>
-      <div class="popup-model-hint">Flash = faster &amp; free-tier friendly · Pro = more thorough, slower</div>
+      <div class="popup-model-hint">Flash = fastest, free-tier friendly · Pro = most thorough, slower</div>
 
       <div class="popup-privacy-note">
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>

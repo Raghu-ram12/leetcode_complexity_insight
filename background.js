@@ -4,7 +4,7 @@
  */
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const DEFAULT_MODEL = "models/gemini-2.0-flash";
+const DEFAULT_MODEL = "models/gemini-3.8-flash";
 const CACHE_VERSION = "v1";
 
 // ─── Message Router ───────────────────────────────────────────────────────────
@@ -21,6 +21,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     chrome.storage.local.get(cacheKey, (data) => {
       sendResponse({ data: data[cacheKey] || null });
     });
+    return true;
+  }
+
+  if (message.type === "GET_STREAK") {
+    getStreak().then((streak) => sendResponse({ streak }));
     return true;
   }
 
@@ -62,7 +67,7 @@ async function handleAnalysis(payload) {
     throw new Error("NO_API_KEY");
   }
 
-  const model = geminiModel || DEFAULT_MODEL;
+  const model =DEFAULT_MODEL;
 
   // Call Gemini
   const analysis = await callGeminiAPI(geminiApiKey, model, payload);
@@ -99,6 +104,11 @@ async function handleAnalysis(payload) {
     timeComplexity: sanitized.timeComplexity,
     spaceComplexity: sanitized.spaceComplexity,
   });
+
+  // Update streak for accepted submissions
+  if (payload.verdict === "Accepted") {
+    await updateStreak(resultToStore.analyzedAt);
+  }
 
   return { ...resultToStore, fromCache: false };
 }
@@ -366,6 +376,55 @@ async function pushToHistory(entry) {
       // Add newest at front, keep max 50
       filtered.unshift(entry);
       chrome.storage.local.set({ lci_history: filtered.slice(0, 50) }, resolve);
+    });
+  });
+}
+
+// ─── Streak Tracking ──────────────────────────────────────────────────────────
+async function updateStreak(analyzedAt) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["lci_streak"], (data) => {
+      const dateStr = analyzedAt.split("T")[0]; // YYYY-MM-DD
+      const existing = data.lci_streak || { current: 0, best: 0, lastDate: null, history: [] };
+
+      // Don't double-count the same day
+      if (existing.lastDate === dateStr) {
+        resolve(existing);
+        return;
+      }
+
+      const today = new Date(dateStr);
+      const last = existing.lastDate ? new Date(existing.lastDate) : null;
+      let current = existing.current;
+
+      if (last) {
+        const diffDays = Math.round((today - last) / 86400000);
+        if (diffDays === 1) {
+          current = current + 1; // consecutive day
+        } else if (diffDays > 1) {
+          current = 1; // gap — reset streak
+        }
+        // diffDays === 0 already handled above
+      } else {
+        current = 1; // first ever
+      }
+
+      const best = Math.max(existing.best || 0, current);
+      const updated = {
+        current,
+        best,
+        lastDate: dateStr,
+        history: [...(existing.history || []), dateStr].slice(-365),
+      };
+      chrome.storage.local.set({ lci_streak: updated }, () => resolve(updated));
+    });
+  });
+}
+
+function getStreak() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get("lci_streak", (data) => {
+      resolve(data.lci_streak || { current: 0, best: 0, lastDate: null, history: [] });
     });
   });
 }
