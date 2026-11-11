@@ -35,7 +35,8 @@
     "tabs"
   ],
   "host_permissions": [
-    "*://*.leetcode.com/*"
+    "*://*.leetcode.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "web_accessible_resources": [
     {

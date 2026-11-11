@@ -76,6 +76,47 @@
   pointer-events: all;
 }
 
+/* Consistent, accessible interactions across the injected panel. */
+#lci-overlay button,
+#lci-overlay input,
+#lci-overlay select { font: inherit; }
+
+#lci-overlay button:focus-visible,
+#lci-overlay a:focus-visible,
+#lci-overlay input:focus-visible,
+#lci-overlay select:focus-visible {
+  outline: 2px solid var(--lci-accent);
+  outline-offset: 2px;
+}
+
+#lci-overlay button { -webkit-tap-highlight-color: transparent; }
+
+#lci-overlay .lci-panel {
+  border: 1px solid var(--lci-border-strong);
+  box-shadow: var(--lci-shadow), 0 0 0 1px rgba(124,110,245,0.08);
+}
+
+#lci-overlay .lci-section-title {
+  letter-spacing: 0.01em;
+}
+
+#lci-overlay .lci-stat-card,
+#lci-overlay .lci-complexity-card,
+#lci-overlay .lci-submission-meta {
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+#lci-overlay .lci-icon-btn:hover { background: var(--lci-surface3); }
+
+@media (prefers-reduced-motion: reduce) {
+  #lci-overlay *, #lci-overlay *::before, #lci-overlay *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 /* ─── Light Theme Override ───────────────────────────────────────────────────── */
 #lci-overlay.lci-light {
   --lci-bg: #f0f2f9;
@@ -1178,6 +1219,47 @@
 }
 .lci-setup-open-btn:hover { opacity: 0.9; transform: scale(1.02); }
 .lci-setup-open-btn:focus-visible { outline: 2px solid var(--lci-accent); outline-offset: 2px; }
+
+/* ─── Home / Idle View ───────────────────────────────────────────────────────── */
+.lci-home-view {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 40px 20px 32px;
+  gap: 10px;
+}
+
+.lci-home-icon {
+  font-size: 42px;
+  filter: drop-shadow(0 0 16px rgba(124,110,245,0.55));
+  margin-bottom: 4px;
+}
+
+.lci-home-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--lci-text);
+  letter-spacing: -0.02em;
+}
+
+.lci-home-desc {
+  margin: 0;
+  font-size: 12px;
+  color: var(--lci-text-muted);
+  line-height: 1.6;
+  max-width: 260px;
+}
+
+.lci-home-hint {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--lci-text-faint);
+  font-style: italic;
+  line-height: 1.5;
+  max-width: 240px;
+}
 
 /* ─── Settings View ──────────────────────────────────────────────────────────── */
 .lci-settings-view {

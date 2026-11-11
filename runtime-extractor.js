@@ -25,7 +25,9 @@ window.LCIRuntimeExtractor = (() => {
   "use strict";
 
   // ─── Config ───────────────────────────────────────────────────────────────
-  const MAX_WAIT_MS  = 8000;   // give up after 8 s
+  // Stats are optional for complexity analysis; keep their lookup from holding
+  // up the Gemini request for several seconds when LeetCode omits them.
+  const MAX_WAIT_MS  = 2500;
   const POLL_INTERVAL_MS = 300; // check every 300 ms
 
   // ─── Strategy 1 — official e2e-locator attributes ─────────────────────────
@@ -127,7 +129,10 @@ window.LCIRuntimeExtractor = (() => {
         document.querySelector('[data-e2e-locator="submission-result"]')?.closest('[class*="result" i]') ||
         document.querySelector('[data-e2e-locator="submission-result"]')?.parentElement?.parentElement ||
         document.body;
-      const text = resultPanel.innerText || '';
+      // innerText may place the percentile and its Runtime/Memory label on
+      // separate lines; normalize whitespace so the nearby-label patterns can
+      // still associate them.
+      const text = (resultPanel.innerText || '').replace(/\s+/g, ' ').trim();
       const regex    = new RegExp(`beats\\s+(\\d+\\.?\\d*)%[^\\n]{0,60}${keyword}`, 'i');
       const altRegex = new RegExp(`${keyword}[^\\n]{0,60}beats\\s+(\\d+\\.?\\d*)%`, 'i');
       const match = text.match(regex) || text.match(altRegex);
@@ -167,23 +172,24 @@ window.LCIRuntimeExtractor = (() => {
    * @returns {Promise<{runtime, memory, runtimePercentile, memoryPercentile}>}
    */
   function extract(seed = {}) {
+    const seedData = seed && typeof seed === "object" ? seed : {};
     return new Promise((resolve) => {
       const start = Date.now();
 
       function attempt() {
-        const found = mergeAll();
+        const found = mergeAll() || {};
 
         // Merge with seed (seed wins only if found is null for that field)
         const merged = {
-          runtime:           found.runtime           || seed.runtime           || null,
-          memory:            found.memory            || seed.memory            || null,
-          runtimePercentile: found.runtimePercentile || seed.runtimePercentile || null,
-          memoryPercentile:  found.memoryPercentile  || seed.memoryPercentile  || null,
+          runtime:           found.runtime           || seedData.runtime           || null,
+          memory:            found.memory            || seedData.memory            || null,
+          runtimePercentile: found.runtimePercentile || seedData.runtimePercentile || null,
+          memoryPercentile:  found.memoryPercentile  || seedData.memoryPercentile  || null,
         };
 
         if (isComplete(merged) || Date.now() - start >= MAX_WAIT_MS) {
           if (!merged.runtime && !merged.memory) {
-            console.warn('[LCI:RuntimeExtractor] Could not extract runtime/memory stats within timeout.');
+            console.debug('[LCI:RuntimeExtractor] Runtime/memory stats were not available before timeout.');
           } else {
             console.log('[LCI:RuntimeExtractor] Extracted stats:', merged);
           }

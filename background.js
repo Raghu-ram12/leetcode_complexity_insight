@@ -4,7 +4,7 @@
  */
 
 const GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta";
-const DEFAULT_MODEL = "models/gemini-3.8-flash";
+const DEFAULT_MODEL = "models/gemini-3.6-flash";
 const CACHE_VERSION = "v1";
 
 // ─── Message Router ───────────────────────────────────────────────────────────
@@ -26,6 +26,24 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
   if (message.type === "GET_STREAK") {
     getStreak().then((streak) => sendResponse({ streak }));
+    return true;
+  }
+
+  if (message.type === "GET_GEMINI_MODELS") {
+    chrome.storage.local.get("geminiApiKey", ({ geminiApiKey }) => {
+      if (!geminiApiKey) {
+        sendResponse({ success: false, error: "NO_API_KEY" });
+        return;
+      }
+
+      fetch(`${GEMINI_API_BASE}/models?key=${encodeURIComponent(geminiApiKey)}`)
+        .then((response) => {
+          if (!response.ok) throw new Error(`Gemini API error ${response.status}`);
+          return response.json();
+        })
+        .then((data) => sendResponse({ success: true, models: data.models || [] }))
+        .catch((error) => sendResponse({ success: false, error: error.message }));
+    });
     return true;
   }
 
@@ -67,7 +85,9 @@ async function handleAnalysis(payload) {
     throw new Error("NO_API_KEY");
   }
 
-  const model =DEFAULT_MODEL;
+  const model = geminiModel === "models/gemini-3.8-flash"
+    ? DEFAULT_MODEL
+    : geminiModel || DEFAULT_MODEL;
 
   // Call Gemini
   const analysis = await callGeminiAPI(geminiApiKey, model, payload);
@@ -352,7 +372,8 @@ function buildCacheKey(payload) {
     .replace(/[^a-z0-9]/g, "_")
     .substring(0, 60);
   const safeLang = (payload.language || "unknown").toLowerCase();
-  return `${CACHE_VERSION}_${safeTitle}_${safeLang}`;
+  const safeDifficulty = (payload.difficulty || "unknown").toLowerCase();
+  return `${CACHE_VERSION}_${safeTitle}_${safeLang}_${safeDifficulty}`;
 }
 
 function getCached(key) {

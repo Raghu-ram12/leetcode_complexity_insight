@@ -28,6 +28,26 @@ document.addEventListener("DOMContentLoaded", () => {
   const streakDot = document.getElementById("streak-dot");
   const streakText = document.getElementById("streak-text");
 
+  // ─── Tab Navigation ─────────────────────────────────────────────────────────
+  const tabBtns = document.querySelectorAll(".popup-tab-btn");
+  const tabDashboard = document.getElementById("tab-dashboard");
+  const tabSettings = document.getElementById("tab-settings");
+
+  tabBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.tab;
+      tabBtns.forEach((b) => b.classList.remove("popup-tab-active"));
+      btn.classList.add("popup-tab-active");
+      if (tab === "dashboard") {
+        tabDashboard.classList.remove("popup-tab-hidden");
+        tabSettings.classList.add("popup-tab-hidden");
+      } else {
+        tabDashboard.classList.add("popup-tab-hidden");
+        tabSettings.classList.remove("popup-tab-hidden");
+      }
+    });
+  });
+
   // FIX #20: Status fallback — if storage is slow, don't hang on "Checking…"
   const statusTimeout = setTimeout(() => {
     setStatus("inactive", "No API key");
@@ -196,8 +216,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // ─── Allowed models (single source of truth) ──────────────────────────────
   const ALLOWED_MODELS = [
-    { value: "models/gemini-3.8-flash", label: "Gemini 3.8 Flash (Default)" },
-    { value: "models/gemini-3.8-pro",   label: "Gemini 3.8 Pro" },
+    { value: "models/gemini-3.6-flash", label: "Gemini 3.6 Flash (Default)" },
+    { value: "models/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
   ];
 
   // ─── Dynamic Model Fetcher Helpers ─────────────────────────────────────────

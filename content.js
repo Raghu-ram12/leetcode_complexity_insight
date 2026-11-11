@@ -34,6 +34,7 @@
   let pendingCode = "";
   let pendingLanguage = "";
   let _loadingMsgInterval = null;
+  let _hasAnalysisResult = false;  // Track whether a real analysis has been rendered
 
   // ─── Init ──────────────────────────────────────────────────────────────────
   function init() {
@@ -85,6 +86,7 @@
   function extractProblemTitle() {
     const strategies = [
       () => document.querySelector('[data-cy="question-title"]')?.textContent?.trim(),
+      () => document.querySelector('[data-e2e-locator="question-title"]')?.textContent?.trim(),
       () => document.querySelector("div.text-title-large")?.textContent?.trim(),
       () => document.querySelector("h1")?.textContent?.trim(),
       () => {
@@ -106,15 +108,30 @@
   }
 
   function extractDifficulty() {
-    const candidates = document.querySelectorAll("span, div");
+    const selectors = [
+      '[data-cy="difficulty"]',
+      '[data-e2e-locator="difficulty"]',
+      '[class*="text-difficulty-"]',
+      '[class*="difficulty" i]',
+    ];
+    for (const selector of selectors) {
+      try {
+        const elements = document.querySelectorAll(selector);
+        for (const el of elements) {
+          const text = el.textContent?.trim().match(/\b(easy|medium|hard)\b/i)?.[1];
+          if (text) return text[0].toUpperCase() + text.slice(1).toLowerCase();
+          const classMatch = String(el.className || "").match(/difficulty-(easy|medium|hard)/i);
+          if (classMatch) return classMatch[1][0].toUpperCase() + classMatch[1].slice(1).toLowerCase();
+        }
+      } catch {}
+    }
+
+    // Last resort for older LeetCode layouts; only exact badge text qualifies.
+    const candidates = document.querySelectorAll("span, div, p, button, [role]");
     for (const el of candidates) {
-      const txt = el.textContent?.trim();
+      const txt = (el.getAttribute("aria-label") || el.textContent || "").trim();
       if (["Easy", "Medium", "Hard"].includes(txt)) return txt;
     }
-    try {
-      const el = document.querySelector('[class*="difficulty"]');
-      if (el) return el.textContent?.trim();
-    } catch {}
     return "Unknown";
   }
 
@@ -149,7 +166,7 @@
           const result = await requestCodeFromPageContext();
           if (result.code) {
             pendingCode = result.code;
-            pendingLanguage = result.lang || extractLanguageFromDOM();
+            pendingLanguage = result.lang ? mapModeIdToLanguage(result.lang) : extractLanguageFromDOM();
           } else {
             pendingCode = extractCodeFallback();
             pendingLanguage = extractLanguageFromDOM();
@@ -299,6 +316,7 @@
       try {
         code = sessionStorage.getItem("lci_pending_code") || pendingCode;
         language = sessionStorage.getItem("lci_pending_lang") || pendingLanguage;
+        if (language?.trim().toLowerCase() === "unknown") language = "";
       } catch (e) {
         code = pendingCode;
         language = pendingLanguage;
@@ -306,7 +324,7 @@
       if (!code) {
         const fresh = await requestCodeFromPageContext();
         code = fresh.code || extractCodeFallback();
-        language = fresh.lang || extractLanguageFromDOM();
+        language = fresh.lang ? mapModeIdToLanguage(fresh.lang) : extractLanguageFromDOM();
       }
       extractProblemMeta();
       const verdict = resultData.status_msg || "Unknown";
@@ -353,7 +371,7 @@
 
       const payload = {
         code: code || "(code unavailable)",
-        language: language || extractLanguageFromDOM(),
+        language: mapModeIdToLanguage(language || extractLanguageFromDOM()),
         problemTitle: currentProblemMeta?.problemTitle || "Unknown Problem",
         difficulty: currentProblemMeta?.difficulty || "Unknown",
         verdict, runtime, memory, runtimePercentile, memoryPercentile, bypassCache,
@@ -374,7 +392,10 @@
       });
     } catch (err) {
       console.error("[LCI] Error during analysis:", err);
-      sendToOverlay({ type: "ERROR", error: "Unexpected error. Please try again." });
+      sendToOverlay({
+        type: "ERROR",
+        error: err?.message || String(err) || "Unexpected error. Please try again.",
+      });
       isAnalyzing = false;
     }
   }
@@ -395,23 +416,51 @@
       const modeId = document.querySelector(".monaco-editor")?.getAttribute("data-mode-id");
       if (modeId) return mapModeIdToLanguage(modeId);
     } catch {}
-    const selectors = ['[data-cy="lang-select"] button', 'button[id*="headlessui-listbox-button"]'];
+    const selectors = [
+      '[data-cy="lang-select"] button',
+      '[data-e2e-locator*="lang" i]',
+      'button[id*="headlessui-listbox-button"]',
+      'button[aria-label*="language" i]',
+    ];
     for (const sel of selectors) {
       try {
         const txt = document.querySelector(sel)?.textContent?.trim();
-        if (txt && isKnownLanguage(txt)) return txt;
+        if (txt && isKnownLanguage(txt)) return mapModeIdToLanguage(txt);
       } catch {}
+    }
+    // LeetCode has changed the language picker markup several times. Search
+    // visible button labels as a final fallback, matching known names exactly.
+    for (const button of document.querySelectorAll("button")) {
+      const text = button.textContent?.trim();
+      if (text && isKnownLanguage(text)) return mapModeIdToLanguage(text);
     }
     return "Unknown";
   }
 
   function mapModeIdToLanguage(modeId) {
-    const map = { python: "Python3", javascript: "JavaScript", typescript: "TypeScript", java: "Java", cpp: "C++", c: "C", csharp: "C#", go: "Go", rust: "Rust", swift: "Swift", kotlin: "Kotlin", ruby: "Ruby", scala: "Scala", php: "PHP", dart: "Dart" };
-    return map[modeId.toLowerCase()] || modeId;
+    const original = String(modeId || "").trim();
+    const key = original.toLowerCase().split(/[ (]/, 1)[0].replace(/[\s_.-]/g, "");
+    if (/^python\d*$/.test(key)) return "Python3";
+    if (/^(cpp|cplusplus|c\+\+)\d*$/.test(key)) return "C++";
+    const map = {
+      javascript: "JavaScript", node: "JavaScript", nodejs: "JavaScript",
+      typescript: "TypeScript", java: "Java",
+      c: "C", csharp: "C#", go: "Go", golang: "Go", rust: "Rust",
+      swift: "Swift", kotlin: "Kotlin", ruby: "Ruby", scala: "Scala",
+      php: "PHP", dart: "Dart", elixir: "Elixir", r: "R",
+      mysql: "MySQL", mssql: "MS SQL Server", oraclesql: "Oracle",
+    };
+    return map[key] || original || "Unknown";
   }
 
   function isKnownLanguage(str) {
-    return ["Python", "Python3", "Java", "C++", "C", "JavaScript", "TypeScript", "Go", "Rust", "Swift", "Kotlin", "Ruby", "Scala", "PHP", "C#", "R", "Dart"].some((l) => str.includes(l));
+    const normalized = String(str || "").trim().toLowerCase().split(/[ (]/, 1)[0].replace(/[\s_.-]/g, "");
+    return [
+      "python", "python3", "python311", "java", "cpp", "cplusplus", "c++", "c",
+      "javascript", "node", "nodejs", "typescript", "go", "golang", "rust",
+      "swift", "kotlin", "ruby", "scala", "php", "csharp", "elixir", "r",
+      "dart", "mysql", "mssql", "oraclesql",
+    ].includes(normalized);
   }
 
   function extractStatFromDOM(keyword) {
@@ -446,6 +495,7 @@
         if (currentSlug !== lastSlug) {
           lastSlug = currentSlug;
           isAnalyzing = false; lastSubmissionId = null; _lastAnalysisKey = '';
+          _hasAnalysisResult = false;
           submitPending = false; stopPolling(); extractProblemMeta(); hookSubmitButton();
         } else {
           hookSubmitButton();
@@ -483,6 +533,9 @@
         <span class="lci-logo-text">Complexity Insight</span>
       </div>
       <div class="lci-header-actions">
+        <button id="lci-home-btn" class="lci-icon-btn" title="Dashboard" aria-label="Open dashboard" tabindex="0">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 10 9-7 9 7"/><path d="M5 9v12h14V9"/><path d="M9 21v-7h6v7"/></svg>
+        </button>
         <button id="lci-settings-btn" class="lci-icon-btn" title="Settings / API Key" aria-label="Settings" tabindex="0">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
         </button>
@@ -552,8 +605,8 @@
           <div class="lci-settings-label" style="margin-top: 10px;">Model</div>
           <div class="lci-settings-select-wrap">
             <select id="lci-model-select" class="lci-settings-select" aria-label="Select Gemini Model">
-              <option value="models/gemini-3.8-flash">Gemini 3.8 Flash (Default)</option>
-              <option value="models/gemini-3.8-pro">Gemini 3.8 Pro</option>
+              <option value="models/gemini-3.6-flash">Gemini 3.6 Flash (Default)</option>
+              <option value="models/gemini-3.1-pro-preview">Gemini 3.1 Pro (Preview)</option>
             </select>
           </div>
           <div class="lci-settings-model-hint">Flash = fastest, free-tier friendly · Pro = most thorough, slower</div>
@@ -583,6 +636,15 @@
         <p class="lci-setup-desc">Add your Gemini API key to start analyzing submissions.</p>
         <button id="lci-open-settings-btn" class="lci-setup-open-btn">⚙ Open Settings</button>
         <a class="lci-setup-link" href="#" id="lci-get-key-link2">Get a free key ↗</a>
+      </div>
+
+      <!-- Home / Idle State (shown when no analysis is active) -->
+      <div id="lci-home" class="lci-state-view lci-home-view lci-hidden">
+        <div class="lci-home-icon">⚡</div>
+        <h3 class="lci-home-title" id="lci-home-title">Ready to Analyze</h3>
+        <p class="lci-home-desc">Submit a solution on LeetCode and the complexity analysis will appear here automatically.</p>
+        <p class="lci-home-hint">Or click the ⚡ Analyze button after a successful submission.</p>
+        <button id="lci-latest-analysis-btn" class="lci-setup-open-btn lci-hidden">View latest analysis</button>
       </div>
 
       <!-- Main Analysis -->
@@ -793,6 +855,10 @@
         isAnalyzing = false;
         lastSubmissionId = null;
         _lastAnalysisKey = '';
+        // Show home view first; checkDOMForResult will switch to analysis/loading if a result is found
+        if (!_hasAnalysisResult) {
+          showSection("lci-home");
+        }
         checkDOMForResult(true, true);
       });
 
@@ -804,6 +870,14 @@
 
       // History toggle
       document.querySelector("#lci-history-btn")?.addEventListener("click", () => showHistoryView());
+      document.querySelector("#lci-home-btn")?.addEventListener("click", () => {
+        const title = document.querySelector("#lci-home-title");
+        const latestButton = document.querySelector("#lci-latest-analysis-btn");
+        if (title) title.textContent = _hasAnalysisResult ? "Your Dashboard" : "Ready to Analyze";
+        latestButton?.classList.toggle("lci-hidden", !_hasAnalysisResult);
+        showSection("lci-home");
+      });
+      document.querySelector("#lci-latest-analysis-btn")?.addEventListener("click", () => showAnalysisView());
       document.querySelector("#lci-history-back-btn")?.addEventListener("click", () => showAnalysisView());
 
       // FIX #11: History search + filter
@@ -1041,8 +1115,8 @@
 
   // ─── Allowed models (single source of truth — mirrors popup.js) ───────────
   const OVERLAY_ALLOWED_MODELS = [
-    { value: "models/gemini-3.8-flash", label: "Gemini 3.8 Flash (Default)" },
-    { value: "models/gemini-3.8-pro",   label: "Gemini 3.8 Pro" },
+    { value: "models/gemini-3.6-flash", label: "Gemini 3.6 Flash (Default)" },
+    { value: "models/gemini-3.1-pro-preview", label: "Gemini 3.1 Pro (Preview)" },
   ];
 
   function fetchAndPopulateOverlayModels(apiKey, selectedModel) {
@@ -1050,34 +1124,36 @@
     if (!sel) return;
     if (!apiKey) { resetOverlayModelDropdown(selectedModel); return; }
     sel.innerHTML = `<option value="">Loading models...</option>`;
-    fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`)
-      .then(r => { if (!r.ok) throw new Error("API call failed"); return r.json(); })
-      .then(data => {
-        // Only show the curated allowed models that the API confirms exist
-        const availableNames = new Set((data.models || []).map(m => m.name));
-        const filtered = OVERLAY_ALLOWED_MODELS.filter(m => availableNames.has(m.value));
-        const toShow = filtered.length > 0 ? filtered : OVERLAY_ALLOWED_MODELS;
+    chrome.runtime.sendMessage({ type: "GET_GEMINI_MODELS" }, (response) => {
+      if (chrome.runtime.lastError || !response?.success) {
+        resetOverlayModelDropdown(selectedModel);
+        return;
+      }
 
-        sel.innerHTML = "";
-        toShow.forEach(m => {
-          const opt = document.createElement("option");
-          opt.value = m.value;
-          opt.textContent = m.label;
-          if (m.value === selectedModel) opt.selected = true;
-          sel.appendChild(opt);
-        });
+      // Only show curated models confirmed by Gemini's API.
+      const availableNames = new Set((response.models || []).map((model) => model.name));
+      const filtered = OVERLAY_ALLOWED_MODELS.filter((model) => availableNames.has(model.value));
+      const toShow = filtered.length > 0 ? filtered : OVERLAY_ALLOWED_MODELS;
 
-        const currentOptions = Array.from(sel.options).map(o => o.value);
-        if (selectedModel && !currentOptions.includes(selectedModel)) {
-          sel.value = currentOptions[0];
-          chrome.storage.local.set({ geminiModel: currentOptions[0] });
-        } else if (!selectedModel) {
-          const def = OVERLAY_ALLOWED_MODELS[0].value;
-          sel.value = currentOptions.includes(def) ? def : currentOptions[0];
-          chrome.storage.local.set({ geminiModel: sel.value });
-        }
-      })
-      .catch(() => resetOverlayModelDropdown(selectedModel));
+      sel.innerHTML = "";
+      toShow.forEach((model) => {
+        const option = document.createElement("option");
+        option.value = model.value;
+        option.textContent = model.label;
+        if (model.value === selectedModel) option.selected = true;
+        sel.appendChild(option);
+      });
+
+      const currentOptions = Array.from(sel.options).map((option) => option.value);
+      if (selectedModel && !currentOptions.includes(selectedModel)) {
+        sel.value = currentOptions[0];
+        chrome.storage.local.set({ geminiModel: currentOptions[0] });
+      } else if (!selectedModel) {
+        const defaultModel = OVERLAY_ALLOWED_MODELS[0].value;
+        sel.value = currentOptions.includes(defaultModel) ? defaultModel : currentOptions[0];
+        chrome.storage.local.set({ geminiModel: sel.value });
+      }
+    });
   }
 
   function resetOverlayModelDropdown(selectedModel) {
@@ -1111,7 +1187,7 @@
 
   // FIX #19: Scroll-to-top on every section switch
   function showSection(id) {
-    ["lci-loading", "lci-error", "lci-analysis", "lci-history", "lci-setup", "lci-settings"].forEach((sid) => {
+    ["lci-loading", "lci-error", "lci-analysis", "lci-history", "lci-setup", "lci-settings", "lci-home"].forEach((sid) => {
       document.querySelector(`#${sid}`)?.classList.add("lci-hidden");
     });
     document.querySelector(`#${id}`)?.classList.remove("lci-hidden");
@@ -1142,7 +1218,13 @@
     });
   }
 
-  function showAnalysisView() { showSection("lci-analysis"); }
+  function showAnalysisView() {
+    if (_hasAnalysisResult) {
+      showSection("lci-analysis");
+    } else {
+      showSection("lci-home");
+    }
+  }
 
   function sendToOverlay(message) {
     if (message.type === "LOADING") {
@@ -1191,6 +1273,7 @@
       }
     } else if (message.type === "ANALYSIS_RESULT") {
       stopLoadingMessages();
+      _hasAnalysisResult = true;
       renderAnalysis(message.data);
       showSection("lci-analysis");
     }

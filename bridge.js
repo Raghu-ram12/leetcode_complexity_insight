@@ -12,8 +12,9 @@
       // Try Monaco editor models (most reliable)
       const models = window.monaco?.editor?.getModels?.();
       if (models && models.length > 0) {
-        const code = models[0].getValue();
-        const lang =
+        const model = models.find((candidate) => candidate.getValue?.()) || models[0];
+        const code = model.getValue();
+        const lang = model.getLanguageId?.() ||
           document.querySelector(".monaco-editor")?.getAttribute("data-mode-id") || "";
         window.dispatchEvent(
           new CustomEvent("__lci_code_response", { detail: { code, lang } })
